@@ -3,48 +3,20 @@ import sqlite3
 from datetime import datetime
 import requests
 import re
+import os
 
 app = Flask(__name__)
 DATABASE = 'vagas_devjr.db'
-import os
-import sqlite3
 
-app = Flask(__name__)
+# ============ REMOVE BANCO ANTIGO (TEMPORÁRIO) ============
+if os.path.exists(DATABASE):
+    os.remove(DATABASE)
+    print("🗑️ Banco antigo removido!")
 
-# ✅ ADICIONE ESSAS LINHAS AQUI:
+# ============ CRIA BANCO COM SCHEMA CORRETO ============
 def init_db():
-    """Cria o banco de dados se não existir"""
-    if not os.path.exists('vagas_devjr.db'):
-        conn = sqlite3.connect('vagas_devjr.db')
-        cursor = conn.cursor()
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS vagas (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                titulo TEXT NOT NULL,
-                empresa TEXT,
-                localizacao TEXT,
-                tecnologias TEXT,
-                seniority TEXT,
-                url TEXT,
-                data_criacao TEXT
-            )
-        ''')
-        conn.commit()
-        conn.close()
-        print("✅ Banco de dados criado com sucesso!")
-    else:
-        print("✅ Banco de dados já existe")
-
-# Chama a função ao iniciar a aplicação
-init_db()
-
-def get_db():
+    """Cria banco com as colunas certas"""
     conn = sqlite3.connect(DATABASE)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-def init_db():
-    conn = get_db()
     conn.execute('''CREATE TABLE IF NOT EXISTS vagas (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         empresa TEXT NOT NULL,
@@ -58,21 +30,27 @@ def init_db():
     )''')
     conn.commit()
     conn.close()
+    print("✅ Banco criado com schema correto!")
 
-@app.route('/initdb', methods=['GET'])
-def init():
-    init_db()
-    return jsonify({"message": "✅ Tabela criada!"})
+# Inicializa banco ao iniciar
+init_db()
 
-@app.route('/vagas', methods=['GET'])
+def get_db():
+    conn = sqlite3.connect(DATABASE)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+# ============ ROTAS ============
+
+@app.route('/vagas')
 def listar_vagas():
-    """Lista todas as vagas"""
-    conn = get_db()
-    vagas = conn.execute(
-        'SELECT * FROM vagas ORDER BY data_cadastro DESC LIMIT 50'
-    ).fetchall()
-    conn.close()
-    return jsonify([dict(v) for v in vagas])
+    try:
+        conn = get_db()
+        vagas = conn.execute("SELECT * FROM vagas ORDER BY data_postagem DESC LIMIT 50").fetchall()
+        conn.close()
+        return jsonify([dict(vaga) for vaga in vagas])
+    except Exception as e:
+        return jsonify({"erro": str(e)}), 500
 
 @app.route('/vagas/python', methods=['GET'])
 def vagas_python():
@@ -86,63 +64,24 @@ def vagas_python():
     conn.close()
     return jsonify([dict(v) for v in vagas])
 
-@app.route('/vagas/buscar/<palavra>', methods=['GET'])
+@app.route('/vagas/buscar/<palavra>')
 def buscar_palavra(palavra):
-    """Busca vagas por palavra-chave específica"""
-    conn = get_db()
-    vagas = conn.execute("""
-        SELECT * FROM vagas 
-        WHERE cargo LIKE ? OR palavras_chave LIKE ? OR empresa LIKE ?
-        ORDER BY data_cadastro DESC
-    """, (f'%{palavra}%', f'%{palavra}%', f'%{palavra}%')).fetchall()
-    conn.close()
-    return jsonify({
-        "total": len(vagas),
-        "palavra_buscada": palavra,
-        "vagas": [dict(v) for v in vagas]
-    })
-
-@app.route('/fix-db', methods=['GET'])
-def fix_database():
-    """Adiciona coluna localizacao na tabela existente"""
     try:
         conn = get_db()
-        cursor = conn.execute("PRAGMA table_info(vagas)")
-        colunas = [row[1] for row in cursor.fetchall()]
-        
-        if 'localizacao' not in colunas:
-            conn.execute('ALTER TABLE vagas ADD COLUMN localizacao TEXT')
-            conn.commit()
-            message = "✅ Coluna 'localizacao' adicionada!"
-        else:
-            message = "⚠️ Coluna já existe"
-        
+        vagas = conn.execute("""
+            SELECT * FROM vagas
+            WHERE cargo LIKE ? OR palavras_chave LIKE ? OR empresa LIKE ?
+            ORDER BY data_postagem DESC
+        """, (f'%{palavra}%', f'%{palavra}%', f'%{palavra}%')).fetchall()
         conn.close()
-        return jsonify({"message": message})
+        return jsonify([dict(vaga) for vaga in vagas])
     except Exception as e:
         return jsonify({"erro": str(e)}), 500
 
-@app.route('/reset-db', methods=['GET'])
-def reset_database():
-    """⚠️ APAGA banco e recria do zero"""
-    import os
-    try:
-        if os.path.exists(DATABASE):
-            os.remove(DATABASE)
-        init_db()
-        return jsonify({
-            "message": "✅ Banco recriado!",
-            "aviso": "Vagas antigas apagadas"
-        })
-    except Exception as e:
-        return jsonify({"erro": str(e)}), 500
-# ============ SCRAPING SIMPLIFICADO - SEM FILTROS COMPLEXOS ============
+# ============ SCRAPING ============
 @app.route('/scraping/backend-br', methods=['GET'])
 def scrape_backend_br():
-    """
-    Busca TODAS as issues abertas do backend-br/vagas
-    SALVA TUDO sem filtros - depois você filtra no banco
-    """
+    """Busca issues do backend-br/vagas"""
     url = "https://api.github.com/repos/backend-br/vagas/issues"
     
     headers = {
@@ -152,7 +91,7 @@ def scrape_backend_br():
     
     params = {
         'state': 'open',
-        'per_page': 50,  # Aumentado para 50
+        'per_page': 50,
         'sort': 'created',
         'direction': 'desc'
     }
@@ -166,10 +105,7 @@ def scrape_backend_br():
         print(f"📥 Recebidas {len(issues)} issues da API")
         
         if not issues:
-            return jsonify({
-                "erro": "API retornou lista vazia",
-                "url": url
-            }), 404
+            return jsonify({"erro": "API retornou lista vazia"}), 404
         
         conn = get_db()
         total_salvas = 0
@@ -178,7 +114,6 @@ def scrape_backend_br():
         
         for idx, issue in enumerate(issues, 1):
             try:
-                # EXTRAÇÃO SIMPLES - salva o título completo como cargo
                 titulo_completo = issue.get('title', 'Sem título')
                 corpo = issue.get('body', '')
                 link = issue.get('html_url', '')
@@ -186,16 +121,15 @@ def scrape_backend_br():
                 
                 print(f"\n📋 Issue #{idx}: {titulo_completo[:60]}...")
                 
-                # Extrai empresa (primeiro texto entre colchetes)
+                # Extrai empresa
                 empresa = 'Não especificada'
                 match_empresa = re.search(r'\[([^\]]+)\]', titulo_completo)
                 if match_empresa:
                     possivel_empresa = match_empresa.group(1)
-                    # Se não for localização, é empresa
                     if possivel_empresa.lower() not in ['remoto', 'híbrido', 'presencial', 'sp', 'rj', 'brasil']:
                         empresa = possivel_empresa
                 
-                # Cargo = título sem os colchetes
+                # Cargo = título sem colchetes
                 cargo = re.sub(r'\[.*?\]\s*', '', titulo_completo).strip()
                 if not cargo:
                     cargo = titulo_completo
@@ -214,17 +148,13 @@ def scrape_backend_br():
                     if match_salario:
                         salario = match_salario.group(0)
                 
-                # Palavras-chave do título e corpo
-                tech_encontradas = []
+                # Palavras-chave
                 tech_list = ['Python', 'Django', 'Flask', 'FastAPI', 'Java', 'Node', 
                             'TypeScript', 'JavaScript', 'Go', 'Ruby', 'PHP', 'Docker',
-                            'AWS', 'PostgreSQL', 'MongoDB', 'Redis', 'Backend', 'Desenvolvedor']
+                            'AWS', 'PostgreSQL', 'MongoDB', 'Redis', 'Backend']
                 
                 texto_completo = (titulo_completo + ' ' + corpo).lower()
-                for tech in tech_list:
-                    if tech.lower() in texto_completo:
-                        tech_encontradas.append(tech.lower())
-                
+                tech_encontradas = [tech for tech in tech_list if tech.lower() in texto_completo]
                 palavras_chave = ', '.join(set(tech_encontradas[:8])) or 'backend'
                 
                 # INSERE NO BANCO
@@ -255,46 +185,31 @@ def scrape_backend_br():
                     print(f"   ✅ SALVA: {empresa} - {cargo[:50]}")
                     
                 except sqlite3.IntegrityError:
-                    print(f"   ⚠️ Duplicada (link já existe)")
+                    print(f"   ⚠️ Duplicada")
                 except Exception as db_err:
                     print(f"   ❌ Erro DB: {db_err}")
                     erros.append(f"Issue #{idx}: {str(db_err)}")
                 
             except Exception as e:
                 erros.append(f"Issue #{idx}: {str(e)}")
-                print(f"   ❌ Erro ao processar: {e}")
                 continue
         
         conn.close()
         
         return jsonify({
-            "message": f"✅ {total_salvas} vagas salvas de {len(issues)} issues!",
-            "fonte": "backend-br/vagas (GitHub)",
-            "total_issues_analisadas": len(issues),
+            "message": f"✅ {total_salvas} vagas salvas!",
             "vagas_salvas": total_salvas,
             "vagas_exemplo": vagas_exemplo,
-            "erros": erros[:5] if erros else [],
-            "link_fonte": "https://github.com/backend-br/vagas/issues",
-            "proxima_acao": "GET /vagas/buscar/Desenvolvedor"
+            "link_fonte": "https://github.com/backend-br/vagas/issues"
         })
         
-    except requests.exceptions.RequestException as e:
-        return jsonify({
-            "erro": f"Erro na requisição GitHub: {str(e)}",
-            "url": url
-        }), 500
     except Exception as e:
-        return jsonify({
-            "erro": f"Erro inesperado: {str(e)}"
-        }), 500
+        return jsonify({"erro": str(e)}), 500
 
-# ============ DEBUG - VER ISSUES BRUTAS ============
+# ============ DEBUG ============
 @app.route('/debug/github-raw', methods=['GET'])
 def debug_github():
-    """
-    Retorna as issues BRUTAS do GitHub para debug
-    Mostra exatamente o que a API retorna
-    """
+    """Ver issues brutas do GitHub"""
     url = "https://api.github.com/repos/backend-br/vagas/issues"
     
     headers = {
@@ -302,52 +217,34 @@ def debug_github():
         'User-Agent': 'Flask-Job-Scraper-BR/1.0'
     }
     
-    params = {
-        'state': 'open',
-        'per_page': 10
-    }
+    params = {'state': 'open', 'per_page': 10}
     
     try:
         response = requests.get(url, headers=headers, params=params, timeout=15)
         response.raise_for_status()
         issues = response.json()
         
-        # Retorna só título e link das primeiras 10
         resumo = []
         for i, issue in enumerate(issues[:10], 1):
             resumo.append({
                 "numero": i,
                 "titulo": issue.get('title', 'N/A'),
-                "link": issue.get('html_url', 'N/A'),
-                "data": issue.get('created_at', 'N/A')[:10]
+                "link": issue.get('html_url', 'N/A')
             })
         
-        return jsonify({
-            "total_issues": len(issues),
-            "primeiras_10": resumo,
-            "api_funciona": "✅ SIM"
-        })
+        return jsonify({"total_issues": len(issues), "primeiras_10": resumo})
         
     except Exception as e:
-        return jsonify({
-            "erro": str(e),
-            "api_funciona": "❌ NÃO"
-        }), 500
+        return jsonify({"erro": str(e)}), 500
 
 if __name__ == '__main__':
-    init_db()
     print("=" * 70)
     print("🚀 API VAGAS - BACKEND BRASIL")
     print("=" * 70)
-    print("\n📊 Visualizar:")
-    print("   GET /vagas                          → Todas")
-    print("   GET /vagas/python                   → Python")
-    print("   GET /vagas/buscar/Desenvolvedor     → Busca 'Desenvolvedor'")
-    print("   GET /vagas/buscar/Junior            → Busca 'Junior'")
-    print("\n🔥 Scraping:")
-    print("   GET /scraping/backend-br            → Busca GitHub")
-    print("\n🐛 Debug:")
-    print("   GET /debug/github-raw               → Ver dados brutos")
+    print("\n📊 Endpoints:")
+    print("   GET /vagas")
+    print("   GET /vagas/buscar/Python")
+    print("   GET /scraping/backend-br")
     print("\n🌐 http://127.0.0.1:5000")
     print("=" * 70)
     app.run(debug=True)

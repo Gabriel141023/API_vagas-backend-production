@@ -8,10 +8,6 @@ import os
 app = Flask(__name__)
 DATABASE = 'vagas_devjr.db'
 
-# ============ REMOVE BANCO ANTIGO (TEMPORÁRIO) ============
-if os.path.exists(DATABASE):
-    os.remove(DATABASE)
-    print("🗑️ Banco antigo removido!")
 
 # ============ CRIA BANCO COM SCHEMA CORRETO ============
 def init_db():

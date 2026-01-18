@@ -6,6 +6,37 @@ import re
 
 app = Flask(__name__)
 DATABASE = 'vagas_devjr.db'
+import os
+import sqlite3
+
+app = Flask(__name__)
+
+# ✅ ADICIONE ESSAS LINHAS AQUI:
+def init_db():
+    """Cria o banco de dados se não existir"""
+    if not os.path.exists('vagas_devjr.db'):
+        conn = sqlite3.connect('vagas_devjr.db')
+        cursor = conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS vagas (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                titulo TEXT NOT NULL,
+                empresa TEXT,
+                localizacao TEXT,
+                tecnologias TEXT,
+                seniority TEXT,
+                url TEXT,
+                data_criacao TEXT
+            )
+        ''')
+        conn.commit()
+        conn.close()
+        print("✅ Banco de dados criado com sucesso!")
+    else:
+        print("✅ Banco de dados já existe")
+
+# Chama a função ao iniciar a aplicação
+init_db()
 
 def get_db():
     conn = sqlite3.connect(DATABASE)

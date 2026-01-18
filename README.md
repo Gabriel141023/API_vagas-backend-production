@@ -1,29 +1,17 @@
-# API Vagas Backend Brasil
+# 🚀 API Vagas Backend Brasil
 
-Busca vagas reais de desenvolvedor backend no Brasil via GitHub Issues do repositório backend-br/vagas.
+API RESTful para agregação de vagas backend brasileiras. Coleta automaticamente oportunidades do repositório [backend-br/vagas](https://github.com/backend-br/vagas) e disponibiliza via endpoints JSON.
 
-## 🔗 Endpoints Disponíveis
+![Status](https://img.shields.io/badge/status-online-brightgreen) ![Python](https://img.shields.io/badge/python-3.12.8-blue) ![PostgreSQL](https://img.shields.io/badge/postgresql-16-blue)
 
-- `GET /vagas` - Lista todas as vagas (últimas 50)
-- `GET /vagas/python` - Filtra vagas Python
-- `GET /vagas/buscar/<palavra>` - Busca customizada (ex: `/vagas/buscar/Java`)
-- `GET /scraping/backend-br` - Atualiza vagas do GitHub
+## 🌐 API em Produção
 
-## Stack
+**Base URL:** `https://api-vagas-backend.onrender.com`
 
-- **Backend**: Flask 3.0
-- **Database**: SQLite3
-- **Scraping**: GitHub API REST
-- **Deploy**: Gunicorn
+---
 
-## Dados
+## 📍 Endpoints Disponíveis
 
-Fonte: [backend-br/vagas](https://github.com/backend-br/vagas/issues)
-
-Última atualização: Janeiro 2026
-
-## Rodar Localmente
-
-```bash
-pip install -r requirements.txt
-python Api_vagas.py
+### **1. Listar Vagas**
+```http
+GET /vagas

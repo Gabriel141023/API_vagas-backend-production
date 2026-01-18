@@ -6,10 +6,12 @@ from datetime import datetime
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
+import sqlite3  
 try:
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
     USE_POSTGRES = True
 except ImportError:
-    import sqlite3
     USE_POSTGRES = False
 
 app = Flask(__name__)
